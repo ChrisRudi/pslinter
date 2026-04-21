@@ -21,6 +21,35 @@ try {
     $started = Get-Date
     $code    = [string]$Request.Body
 
+    # Soft Rate Limit: 100 Requests pro UTC-Tag pro PowerShell-Worker.
+    # $script:-Scope persistiert zwischen Invocations derselben Instance;
+    # Cold Start resettet den Counter. Fair-Use-Guard, kein Hard Cap.
+    if (-not $script:pslintUsage) { $script:pslintUsage = @{} }
+    $dayKey = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+    foreach ($stale in @($script:pslintUsage.Keys | Where-Object { $_ -ne $dayKey })) {
+        $script:pslintUsage.Remove($stale)
+    }
+    $count = ($script:pslintUsage[$dayKey] ?? 0) + 1
+    $script:pslintUsage[$dayKey] = $count
+
+    if ($count -gt 100) {
+        Write-Warning "rate-limit $dayKey count=$count"
+        Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+            StatusCode = [HttpStatusCode]::TooManyRequests
+            Headers    = @{
+                'Content-Type'   = 'application/json'
+                'Retry-After'    = '3600'
+            }
+            Body       = (@{
+                error      = 'daily limit exceeded'
+                limit      = 100
+                windowUtc  = $dayKey
+                retryAfter = 'next UTC midnight'
+            } | ConvertTo-Json)
+        })
+        return
+    }
+
     $psaArgs = @{ ScriptDefinition = $code }
 
     $includeRule = Split-Csv $Request.Query.IncludeRule

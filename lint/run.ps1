@@ -48,11 +48,19 @@ $result = @(
     }
 )
 
+# Garantierte Array-Ausgabe: '@() | ConvertTo-Json -AsArray' liefert in
+# manchen PS-Versionen leere Pipeline statt '[]'. Explizit handhaben.
+if ($result.Count -eq 0) {
+    $json = '[]'
+} else {
+    $json = ConvertTo-Json -InputObject $result -Depth 6 -AsArray
+}
+
 $durationMs = [int](New-TimeSpan -Start $started -End (Get-Date)).TotalMilliseconds
-Write-Host ("lint ok duration_ms={0} issues={1}" -f $durationMs, $result.Count)
+Write-Host ("lint ok duration_ms={0} body_len={1} issues={2}" -f $durationMs, $code.Length, $result.Count)
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
     StatusCode = [HttpStatusCode]::OK
     Headers    = @{ 'Content-Type' = 'application/json' }
-    Body       = ($result | ConvertTo-Json -Depth 6 -AsArray)
+    Body       = $json
 })

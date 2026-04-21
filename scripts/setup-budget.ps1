@@ -25,7 +25,14 @@ function Write-Step([string]$text) {
 }
 
 $subId    = (Get-AzContext).Subscription.Id
-$token    = (Get-AzAccessToken -ResourceUrl 'https://management.azure.com').Token
+$tokenObj = Get-AzAccessToken -ResourceUrl 'https://management.azure.com' -WarningAction SilentlyContinue
+# Ab Az 14 ist .Token ein SecureString. Entschluesseln, sonst landet der
+# Literal "System.Security.SecureString" im Authorization-Header.
+$token    = if ($tokenObj.Token -is [System.Security.SecureString]) {
+    [System.Net.NetworkCredential]::new('', $tokenObj.Token).Password
+} else {
+    $tokenObj.Token
+}
 $mgmt     = 'https://management.azure.com'
 $rgPath   = "/subscriptions/$subId/resourceGroups/$ResourceGroup"
 $headers  = @{

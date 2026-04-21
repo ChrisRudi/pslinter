@@ -21,7 +21,7 @@ try {
     $started = Get-Date
     $code    = [string]$Request.Body
 
-    # Soft Rate Limit: 100 Requests pro UTC-Tag pro PowerShell-Worker.
+    # Soft Rate Limit: 200 Requests pro UTC-Tag pro PowerShell-Worker.
     # $script:-Scope persistiert zwischen Invocations derselben Instance;
     # Cold Start resettet den Counter. Fair-Use-Guard, kein Hard Cap.
     if (-not $script:pslintUsage) { $script:pslintUsage = @{} }
@@ -32,17 +32,17 @@ try {
     $count = ($script:pslintUsage[$dayKey] ?? 0) + 1
     $script:pslintUsage[$dayKey] = $count
 
-    if ($count -gt 100) {
+    if ($count -gt 200) {
         Write-Warning "rate-limit $dayKey count=$count"
         Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::TooManyRequests
             Headers    = @{
-                'Content-Type'   = 'application/json'
-                'Retry-After'    = '3600'
+                'Content-Type' = 'application/json'
+                'Retry-After'  = '3600'
             }
             Body       = (@{
-                error      = 'daily limit exceeded'
-                limit      = 100
+                error      = 'Tageslimit von 200 Aufrufen ueberschritten'
+                limit      = 200
                 windowUtc  = $dayKey
                 retryAfter = 'next UTC midnight'
             } | ConvertTo-Json)

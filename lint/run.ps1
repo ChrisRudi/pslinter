@@ -5,8 +5,8 @@
 # Output: JSON-Array von PSSA-DiagnosticRecords (RuleName, Severity,
 #         Line, Column, Message, ScriptName). HTTP 200 auch bei Syntax-
 #         Fehlern (tolerant als Issue). HTTP 500 mit JSON-Errorobjekt bei
-#         Runtime-Fehlern (fehlende Module, Serialisierung, ...).
-# Deps:   PSScriptAnalyzer (via requirements.psd1 als managed dependency).
+#         Runtime-Fehlern.
+# Deps:   PSScriptAnalyzer (im Modules-Ordner mitgeliefert durch deploy.yml).
 
 using namespace System.Net
 
@@ -20,22 +20,6 @@ function Split-Csv([string]$value) {
 try {
     $started = Get-Date
     $code    = [string]$Request.Body
-
-    # PSScriptAnalyzer zur Laufzeit sicherstellen. Managed Dependencies
-    # laden das Modul auf dieser Runtime nicht zuverlaessig. Install
-    # passiert nur beim allerersten Request pro Worker (~30-90 Sek),
-    # danach gecacht.
-    if (-not (Get-Module -Name PSScriptAnalyzer)) {
-        if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-            Install-Module -Name PSScriptAnalyzer `
-                -Repository PSGallery `
-                -Scope       CurrentUser `
-                -Force `
-                -AllowClobber `
-                -AcceptLicense
-        }
-        Import-Module -Name PSScriptAnalyzer
-    }
 
     $psaArgs = @{ ScriptDefinition = $code }
 
@@ -64,9 +48,6 @@ try {
         }
     )
 
-    # '@() | ConvertTo-Json -AsArray' liefert in PS 7.4 leere Pipeline statt
-    # '[]' -> explizit. Fuer Count > 0 liefert Pipeline + -AsArray verlaesslich
-    # ein JSON-Array (auch bei nur einem Record).
     if ($result.Count -eq 0) {
         $json = '[]'
     } else {
@@ -84,11 +65,11 @@ try {
 }
 catch {
     $err = [ordered]@{
-        type       = $_.Exception.GetType().FullName
-        message    = $_.Exception.Message
-        scriptLine = $_.InvocationInfo.ScriptLineNumber
+        type            = $_.Exception.GetType().FullName
+        message         = $_.Exception.Message
+        scriptLine      = $_.InvocationInfo.ScriptLineNumber
         positionMessage = $_.InvocationInfo.PositionMessage
-        stackTrace = $_.ScriptStackTrace
+        stackTrace      = $_.ScriptStackTrace
     }
     Write-Error ("lint-error: {0}" -f ($err | ConvertTo-Json -Depth 4 -Compress))
 

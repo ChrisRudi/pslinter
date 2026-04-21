@@ -1,5 +1,8 @@
 # deploy.yml
 # Zweck: Push auf main deployt die Function App zu Azure.
+#        PSScriptAnalyzer wird vor dem Deploy via Save-Module in
+#        ./Modules gepackt und mit ausgeliefert - dadurch ist das Modul
+#        sofort im $env:PSModulePath verfuegbar, ohne Runtime-Install.
 # Deps:  Repo-Secret AZURE_FUNCTIONAPP_PUBLISH_PROFILE (XML aus Portal).
 
 name: deploy
@@ -19,6 +22,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Bundle PSScriptAnalyzer into Modules/
+        shell: pwsh
+        run: |
+          $pinned = (Import-PowerShellDataFile -Path ./requirements.psd1).PSScriptAnalyzer
+          $target = Join-Path $PWD 'Modules'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          if ($pinned -and $pinned -ne '1.*') {
+              Save-Module -Name PSScriptAnalyzer -RequiredVersion $pinned -Path $target -Repository PSGallery -Force
+          } else {
+              Save-Module -Name PSScriptAnalyzer -Path $target -Repository PSGallery -Force
+          }
+          Get-ChildItem -Recurse $target | Select-Object -First 5 FullName
 
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1

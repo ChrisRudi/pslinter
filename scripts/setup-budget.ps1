@@ -22,12 +22,13 @@ function Write-Step([string]$text) {
 }
 
 $subId = (Get-AzContext).Subscription.Id
+$mgmt  = 'https://management.azure.com'
 $base  = "/subscriptions/$subId/resourceGroups/$ResourceGroup"
 
 # --- 1. Action Group ---
 Write-Step "Action Group '$ActionGroupName' (Mail an $Email)"
 
-$agPath = "$base/providers/Microsoft.Insights/actionGroups/$ActionGroupName?api-version=2023-01-01"
+$agUri  = "$mgmt$base/providers/Microsoft.Insights/actionGroups/${ActionGroupName}?api-version=2023-01-01"
 $agBody = @{
     location   = 'global'
     properties = @{
@@ -43,7 +44,7 @@ $agBody = @{
     }
 } | ConvertTo-Json -Depth 6 -Compress
 
-$agRes = Invoke-AzRestMethod -Path $agPath -Method PUT -Payload $agBody
+$agRes = Invoke-AzRestMethod -Uri $agUri -Method PUT -Payload $agBody
 if ($agRes.StatusCode -ge 400) {
     throw "Action Group fehlgeschlagen: HTTP $($agRes.StatusCode) $($agRes.Content)"
 }
@@ -61,7 +62,7 @@ $endDate   = (Get-Date -Year ($now.Year + 5) -Month $now.Month -Day 1 `
 
 Write-Step "Budget '$BudgetName' = $Amount / Monat, Scope RG '$ResourceGroup'"
 
-$budgetPath = "$base/providers/Microsoft.Consumption/budgets/$BudgetName?api-version=2023-05-01"
+$budgetUri  = "$mgmt$base/providers/Microsoft.Consumption/budgets/${BudgetName}?api-version=2023-05-01"
 $budgetBody = @{
     properties = @{
         category      = 'Cost'
@@ -94,7 +95,7 @@ $budgetBody = @{
     }
 } | ConvertTo-Json -Depth 8 -Compress
 
-$budgetRes = Invoke-AzRestMethod -Path $budgetPath -Method PUT -Payload $budgetBody
+$budgetRes = Invoke-AzRestMethod -Uri $budgetUri -Method PUT -Payload $budgetBody
 if ($budgetRes.StatusCode -ge 400) {
     throw "Budget fehlgeschlagen: HTTP $($budgetRes.StatusCode) $($budgetRes.Content)"
 }

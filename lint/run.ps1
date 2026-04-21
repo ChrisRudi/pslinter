@@ -21,6 +21,22 @@ try {
     $started = Get-Date
     $code    = [string]$Request.Body
 
+    # PSScriptAnalyzer zur Laufzeit sicherstellen. Managed Dependencies
+    # laden das Modul auf dieser Runtime nicht zuverlaessig. Install
+    # passiert nur beim allerersten Request pro Worker (~30-90 Sek),
+    # danach gecacht.
+    if (-not (Get-Module -Name PSScriptAnalyzer)) {
+        if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+            Install-Module -Name PSScriptAnalyzer `
+                -Repository PSGallery `
+                -Scope       CurrentUser `
+                -Force `
+                -AllowClobber `
+                -AcceptLicense
+        }
+        Import-Module -Name PSScriptAnalyzer
+    }
+
     $psaArgs = @{ ScriptDefinition = $code }
 
     $includeRule = Split-Csv $Request.Query.IncludeRule

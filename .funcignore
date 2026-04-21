@@ -3,4 +3,5 @@
 .github
 *.md
 tests
+scripts
 local.settings.json

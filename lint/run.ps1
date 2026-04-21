@@ -4,63 +4,81 @@
 #         ExcludeRule, Severity, Settings (alle optional, CSV bei Arrays).
 # Output: JSON-Array von PSSA-DiagnosticRecords (RuleName, Severity,
 #         Line, Column, Message, ScriptName). HTTP 200 auch bei Syntax-
-#         Fehlern (tolerant als Issue). HTTP 500 nur bei Runtime-Fehlern.
+#         Fehlern (tolerant als Issue). HTTP 500 mit JSON-Errorobjekt bei
+#         Runtime-Fehlern (fehlende Module, Serialisierung, ...).
 # Deps:   PSScriptAnalyzer (via requirements.psd1 als managed dependency).
 
 using namespace System.Net
 
 param($Request, $TriggerMetadata)
 
-$started = Get-Date
-$code    = [string]$Request.Body
-
 function Split-Csv([string]$value) {
     if ([string]::IsNullOrWhiteSpace($value)) { return @() }
     $value.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 }
 
-$psaArgs = @{ ScriptDefinition = $code }
+try {
+    $started = Get-Date
+    $code    = [string]$Request.Body
 
-$includeRule = Split-Csv $Request.Query.IncludeRule
-$excludeRule = Split-Csv $Request.Query.ExcludeRule
-$severity    = Split-Csv $Request.Query.Severity
-$settings    = $Request.Query.Settings
+    $psaArgs = @{ ScriptDefinition = $code }
 
-if ($includeRule.Count -gt 0) { $psaArgs.IncludeRule = $includeRule }
-if ($excludeRule.Count -gt 0) { $psaArgs.ExcludeRule = $excludeRule }
-if ($severity.Count    -gt 0) { $psaArgs.Severity    = $severity    }
-if ($settings)                { $psaArgs.Settings    = $settings    }
+    $includeRule = Split-Csv $Request.Query.IncludeRule
+    $excludeRule = Split-Csv $Request.Query.ExcludeRule
+    $severity    = Split-Csv $Request.Query.Severity
+    $settings    = $Request.Query.Settings
 
-# Parser-/Syntax-Fehler werden von PSSA als Record emittiert und
-# landen damit tolerant im Issue-Array (HTTP 200).
-$records = Invoke-ScriptAnalyzer @psaArgs
+    if ($includeRule.Count -gt 0) { $psaArgs.IncludeRule = $includeRule }
+    if ($excludeRule.Count -gt 0) { $psaArgs.ExcludeRule = $excludeRule }
+    if ($severity.Count    -gt 0) { $psaArgs.Severity    = $severity    }
+    if ($settings)                { $psaArgs.Settings    = $settings    }
 
-$result = @(
-    foreach ($r in $records) {
-        [ordered]@{
-            RuleName   = $r.RuleName
-            Severity   = [string]$r.Severity
-            Line       = $r.Line
-            Column     = $r.Column
-            Message    = $r.Message
-            ScriptName = $r.ScriptName
+    $records = Invoke-ScriptAnalyzer @psaArgs
+
+    $result = @(
+        foreach ($r in $records) {
+            [ordered]@{
+                RuleName   = $r.RuleName
+                Severity   = [string]$r.Severity
+                Line       = $r.Line
+                Column     = $r.Column
+                Message    = $r.Message
+                ScriptName = $r.ScriptName
+            }
         }
+    )
+
+    # '@() | ConvertTo-Json -AsArray' liefert in PS 7.4 leere Pipeline statt
+    # '[]' -> explizit. Fuer Count > 0 liefert Pipeline + -AsArray verlaesslich
+    # ein JSON-Array (auch bei nur einem Record).
+    if ($result.Count -eq 0) {
+        $json = '[]'
+    } else {
+        $json = $result | ConvertTo-Json -Depth 6 -AsArray
     }
-)
 
-# Garantierte Array-Ausgabe: '@() | ConvertTo-Json -AsArray' liefert in
-# manchen PS-Versionen leere Pipeline statt '[]'. Explizit handhaben.
-if ($result.Count -eq 0) {
-    $json = '[]'
-} else {
-    $json = ConvertTo-Json -InputObject $result -Depth 6 -AsArray
+    $durationMs = [int](New-TimeSpan -Start $started -End (Get-Date)).TotalMilliseconds
+    Write-Host ("lint ok duration_ms={0} body_len={1} issues={2}" -f $durationMs, $code.Length, $result.Count)
+
+    Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+        StatusCode = [HttpStatusCode]::OK
+        Headers    = @{ 'Content-Type' = 'application/json' }
+        Body       = $json
+    })
 }
+catch {
+    $err = [ordered]@{
+        type       = $_.Exception.GetType().FullName
+        message    = $_.Exception.Message
+        scriptLine = $_.InvocationInfo.ScriptLineNumber
+        positionMessage = $_.InvocationInfo.PositionMessage
+        stackTrace = $_.ScriptStackTrace
+    }
+    Write-Error ("lint-error: {0}" -f ($err | ConvertTo-Json -Depth 4 -Compress))
 
-$durationMs = [int](New-TimeSpan -Start $started -End (Get-Date)).TotalMilliseconds
-Write-Host ("lint ok duration_ms={0} body_len={1} issues={2}" -f $durationMs, $code.Length, $result.Count)
-
-Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
-    StatusCode = [HttpStatusCode]::OK
-    Headers    = @{ 'Content-Type' = 'application/json' }
-    Body       = $json
-})
+    Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+        StatusCode = [HttpStatusCode]::InternalServerError
+        Headers    = @{ 'Content-Type' = 'application/json' }
+        Body       = ($err | ConvertTo-Json -Depth 4)
+    })
+}

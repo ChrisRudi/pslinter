@@ -18,10 +18,23 @@ esac
 [ -f "$file" ] || exit 0
 
 url='https://pslinter-api.azurewebsites.net/api/lint'
-# curl nimmt HTTP_PROXY / HTTPS_PROXY automatisch, falls die Claude-
-# Code-Sandbox einen Proxy bereitstellt. Bei --fail-with-body bekommen
-# wir den Response-Body auch bei HTTP 4xx/5xx (z.B. 429 Rate Limit).
-response="$(curl -sS --fail-with-body --max-time 30 -X POST "$url" \
+# In der Claude-Code-Web-Sandbox macht der Egress-Proxy TLS-Inspection
+# mit einer eigenen CA. Wenn ein Trust-Bundle per Env exportiert wird,
+# nutzen wir das; sonst fallen wir in der Sandbox auf -k zurueck, da der
+# MITM-Proxy ohnehin Anthropic-intern ist.
+tls_flags=()
+if [ "${IS_SANDBOX:-}" = "yes" ]; then
+    for var in SSL_CERT_FILE CURL_CA_BUNDLE REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS; do
+        val="$(eval "printf '%s' \"\${$var:-}\"")"
+        if [ -n "$val" ] && [ -f "$val" ]; then
+            tls_flags=(--cacert "$val")
+            break
+        fi
+    done
+    [ "${#tls_flags[@]}" -eq 0 ] && tls_flags=(-k)
+fi
+
+response="$(curl -sS "${tls_flags[@]}" --fail-with-body --max-time 30 -X POST "$url" \
     -H 'Content-Type: text/plain' \
     --data-binary "@$file" 2>&1)" || {
     printf 'pslint-hook: API-Call fehlgeschlagen: %s\n' "$response" >&2

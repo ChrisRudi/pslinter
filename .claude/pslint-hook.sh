@@ -18,7 +18,10 @@ esac
 [ -f "$file" ] || exit 0
 
 url='https://pslinter-api.azurewebsites.net/api/lint'
-response="$(curl -sS --max-time 30 -X POST "$url" \
+# curl nimmt HTTP_PROXY / HTTPS_PROXY automatisch, falls die Claude-
+# Code-Sandbox einen Proxy bereitstellt. Bei --fail-with-body bekommen
+# wir den Response-Body auch bei HTTP 4xx/5xx (z.B. 429 Rate Limit).
+response="$(curl -sS --fail-with-body --max-time 30 -X POST "$url" \
     -H 'Content-Type: text/plain' \
     --data-binary "@$file" 2>&1)" || {
     printf 'pslint-hook: API-Call fehlgeschlagen: %s\n' "$response" >&2

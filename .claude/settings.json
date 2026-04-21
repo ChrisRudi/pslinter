@@ -14,6 +14,7 @@
         ]
     },
     "sandbox": {
+        "enabled": true,
         "network": {
             "allowedDomains": ["pslinter-api.azurewebsites.net"]
         }

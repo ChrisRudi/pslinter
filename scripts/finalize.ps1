@@ -58,7 +58,8 @@ Update-AzFunctionAppSetting `
     -AppSetting        @{
         'APPLICATIONINSIGHTS_CONNECTION_STRING' = $ai.ConnectionString
         'APPINSIGHTS_INSTRUMENTATIONKEY'        = $ai.InstrumentationKey
-    } | Out-Null
+    } `
+    -Force | Out-Null
 Write-Host "   Connection String hinterlegt." -ForegroundColor Green
 
 # --- 4. Publish Profile holen ---
@@ -67,7 +68,6 @@ $profileFile = Join-Path $PWD "$AppName.PublishSettings"
 $profileXml  = Get-AzWebAppPublishingProfile `
     -ResourceGroupName $ResourceGroup `
     -Name              $AppName `
-    -Format            Xml `
     -OutputFile        $profileFile
 Write-Host "   Gespeichert als: $profileFile" -ForegroundColor Green
 

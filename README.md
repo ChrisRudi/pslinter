@@ -101,13 +101,14 @@ Invoke-RestMethod -Uri $url -Method Post -ContentType 'text/plain' `
 
 ## Claude Code Integration
 
-Das Repo bringt einen fertig konfigurierten PostToolUse-Hook mit,
-der `.ps1`/`.psm1`/`.psd1`-Dateien nach jedem Write/Edit automatisch
-an den Endpoint schickt und Lint-Issues in den Claude-Transcript
-einspielt. Konfiguration in `.claude/settings.json`, Script in
-`.claude/pslint-hook.sh`. Einziges Setup: Claude-Code-Session einmal
-neu starten, damit die Sandbox-Allowlist fuer
-`pslinter-api.azurewebsites.net` greift.
+PostToolUse-Hook in `.claude/`, der `.ps1`/`.psm1`/`.psd1` nach jedem
+Write/Edit automatisch linten laesst und Issues in den Transcript
+einspielt. Funktioniert in Claude Code CLI lokal und in CI. In der
+Claude-Code-Web-Sandbox (`claude.ai/code`) blockiert der Anthropic-
+Egress-Gateway den Host, dort ist der Hook wirkungslos.
+
+Details, Troubleshooting und Kompatibilitaetsmatrix:
+[claude-code-integration.md](./claude-code-integration.md).
 
 ## Projekt-Struktur
 
@@ -131,4 +132,5 @@ scripts/
   finalize.ps1              App Insights + Publish Profile
   setup-budget.ps1          Action Group + Budget-Alert
 pslinter-setup.md           Komplette Aufbau-Anleitung
+claude-code-integration.md  Hook-Details und Sandbox-Kompatibilitaet
 ```

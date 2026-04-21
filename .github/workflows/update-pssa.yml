@@ -1,0 +1,58 @@
+# update-pssa.yml
+# Zweck: Woechentlicher Check gegen PSGallery. Neuere PSScriptAnalyzer-
+#        Version -> requirements.psd1 aktualisieren und PR oeffnen.
+# Deps:  Schreibrechte auf Contents und Pull Requests (siehe permissions).
+
+name: update-pssa
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine versions
+        id: versions
+        shell: pwsh
+        run: |
+          $psd     = Import-PowerShellDataFile -Path ./requirements.psd1
+          $current = [string]$psd.PSScriptAnalyzer
+          $latest  = (Find-Module -Name PSScriptAnalyzer -Repository PSGallery).Version.ToString()
+          "current=$current" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "latest=$latest"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Update requirements.psd1
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        shell: pwsh
+        env:
+          CURRENT: ${{ steps.versions.outputs.current }}
+          LATEST:  ${{ steps.versions.outputs.latest }}
+        run: |
+          $path    = './requirements.psd1'
+          $content = Get-Content -Raw -Path $path
+          $updated = $content -replace [regex]::Escape("'PSScriptAnalyzer' = '$env:CURRENT'"), "'PSScriptAnalyzer' = '$env:LATEST'"
+          Set-Content -Path $path -Value $updated -NoNewline
+
+      - name: Open pull request
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/update-pssa-${{ steps.versions.outputs.latest }}
+          commit-message: "chore: bump PSScriptAnalyzer to ${{ steps.versions.outputs.latest }}"
+          title: "chore: bump PSScriptAnalyzer to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automatisches Update: PSScriptAnalyzer
+            ${{ steps.versions.outputs.current }} -> ${{ steps.versions.outputs.latest }}
+
+            Merge auf main triggert den Production-Deploy via deploy.yml.
+          delete-branch: true

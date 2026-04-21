@@ -1,0 +1,6 @@
+.git*
+.vscode
+.github
+*.md
+tests
+local.settings.json

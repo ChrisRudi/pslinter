@@ -4,6 +4,9 @@
 # Ausfuehren in Cloud Shell.
 # Aufruf:   ./setup-budget.ps1 -Email deine@mail.de
 #           Optional: -Amount 5 -BudgetName pslinter-budget
+# Hinweis:  Azure verschickt eine Bestaetigungsmail an die angegebene
+#           Adresse - der Opt-In-Link muss einmalig geklickt werden,
+#           sonst werden Alerts nicht zugestellt.
 
 param(
     [Parameter(Mandatory = $true)]
@@ -21,14 +24,19 @@ function Write-Step([string]$text) {
     Write-Host "==> $text" -ForegroundColor Cyan
 }
 
-$subId = (Get-AzContext).Subscription.Id
-$mgmt  = 'https://management.azure.com'
-$base  = "/subscriptions/$subId/resourceGroups/$ResourceGroup"
+$subId    = (Get-AzContext).Subscription.Id
+$token    = (Get-AzAccessToken -ResourceUrl 'https://management.azure.com').Token
+$mgmt     = 'https://management.azure.com'
+$rgPath   = "/subscriptions/$subId/resourceGroups/$ResourceGroup"
+$headers  = @{
+    Authorization  = "Bearer $token"
+    'Content-Type' = 'application/json'
+}
 
 # --- 1. Action Group ---
 Write-Step "Action Group '$ActionGroupName' (Mail an $Email)"
 
-$agUri  = "$mgmt$base/providers/Microsoft.Insights/actionGroups/${ActionGroupName}?api-version=2023-01-01"
+$agUri  = "$mgmt$rgPath/providers/Microsoft.Insights/actionGroups/${ActionGroupName}?api-version=2023-01-01"
 $agBody = @{
     location   = 'global'
     properties = @{
@@ -42,15 +50,12 @@ $agBody = @{
             }
         )
     }
-} | ConvertTo-Json -Depth 6 -Compress
+} | ConvertTo-Json -Depth 6
 
-$agRes = Invoke-AzRestMethod -Uri $agUri -Method PUT -Payload $agBody
-if ($agRes.StatusCode -ge 400) {
-    throw "Action Group fehlgeschlagen: HTTP $($agRes.StatusCode) $($agRes.Content)"
-}
+Invoke-RestMethod -Uri $agUri -Method Put -Headers $headers -Body $agBody | Out-Null
 Write-Host "   Angelegt/aktualisiert." -ForegroundColor Green
 
-$agResourceId = "$base/providers/Microsoft.Insights/actionGroups/$ActionGroupName"
+$agResourceId = "$rgPath/providers/Microsoft.Insights/actionGroups/$ActionGroupName"
 
 # --- 2. Budget ---
 # StartDate muss erster Tag des aktuellen Monats sein (Azure-Constraint).
@@ -62,7 +67,7 @@ $endDate   = (Get-Date -Year ($now.Year + 5) -Month $now.Month -Day 1 `
 
 Write-Step "Budget '$BudgetName' = $Amount / Monat, Scope RG '$ResourceGroup'"
 
-$budgetUri  = "$mgmt$base/providers/Microsoft.Consumption/budgets/${BudgetName}?api-version=2023-05-01"
+$budgetUri  = "$mgmt$rgPath/providers/Microsoft.Consumption/budgets/${BudgetName}?api-version=2023-05-01"
 $budgetBody = @{
     properties = @{
         category      = 'Cost'
@@ -93,12 +98,9 @@ $budgetBody = @{
             }
         }
     }
-} | ConvertTo-Json -Depth 8 -Compress
+} | ConvertTo-Json -Depth 8
 
-$budgetRes = Invoke-AzRestMethod -Uri $budgetUri -Method PUT -Payload $budgetBody
-if ($budgetRes.StatusCode -ge 400) {
-    throw "Budget fehlgeschlagen: HTTP $($budgetRes.StatusCode) $($budgetRes.Content)"
-}
+Invoke-RestMethod -Uri $budgetUri -Method Put -Headers $headers -Body $budgetBody | Out-Null
 Write-Host "   Angelegt/aktualisiert." -ForegroundColor Green
 
 # --- 3. Zusammenfassung ---
@@ -112,8 +114,9 @@ Write-Host "  Trigger:      80% und 100% Actual"
 Write-Host "  Mail an:      $Email"
 Write-Host "  Action Group: $ActionGroupName"
 Write-Host ""
-Write-Host "  Portal-Check: Subscriptions -> Budgets -> $BudgetName"
+Write-Host "  Wichtig:      Azure schickt eine Bestaetigungsmail an $Email." -ForegroundColor Yellow
+Write-Host "                Opt-In-Link klicken, sonst keine Alerts."         -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  Wenn die Mail kommt, 1. Function App stoppen:" -ForegroundColor Yellow
-Write-Host "     Stop-AzFunctionApp -ResourceGroupName $ResourceGroup -Name pslinter-api -Force" -ForegroundColor Yellow
+Write-Host "  Wenn der Alert feuert, Function App stoppen:"
+Write-Host "     Stop-AzFunctionApp -ResourceGroupName $ResourceGroup -Name pslinter-api -Force"
 Write-Host ""

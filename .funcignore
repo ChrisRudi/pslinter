@@ -1,6 +1,7 @@
 .git*
 .vscode
 .github
+.claude
 *.md
 tests
 scripts

@@ -1,0 +1,21 @@
+{
+    "$schema": "https://json.schemastore.org/claude-code-settings.json",
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/pslint-hook.sh"
+                    }
+                ]
+            }
+        ]
+    },
+    "sandbox": {
+        "network": {
+            "allowedDomains": ["pslinter-api.azurewebsites.net"]
+        }
+    }
+}

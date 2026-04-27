@@ -9,5 +9,5 @@
 #        update-pssa.yml dient nur als Alarm falls Major 2.x erscheint.
 
 @{
-    'PSScriptAnalyzer' = '1.*'
+    'PSScriptAnalyzer' = '1.25.0'
 }
